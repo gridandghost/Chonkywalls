@@ -13,33 +13,33 @@ OUTER_PADDING = 20
 INNER_PADDING = 6
 
 CHUNKS = [
-    (4, 2),  # medium wide
-    (3, 2),  # balanced wide
-    (2, 3),  # tall
-    (3, 1),  # short wide
-    (2, 2),  # square
-    (1, 3),  # skinny tall
-    (2, 1),  # small wide
-    (1, 2),  # small tall
-    (1, 1),  # tiny filler
-    (4, 1),  # very wide but short
-    (1, 4),  # very tall but skinny
-    (3, 3),  # larger square (rare)
+    (4, 2),  
+    (3, 2), 
+    (2, 3),  
+    (3, 1),  
+    (2, 2), 
+    (1, 3),  
+    (2, 1), 
+    (1, 2),  
+    (1, 1),  
+    (4, 1),  
+    (1, 4), 
+    (3, 3), 
 ]
 
 CHUNK_WEIGHTS = [
-    2,   # (4, 2) - medium wide
-    3,   # (3, 2) - balanced wide  
-    4,   # (2, 3) - tall
-    3,   # (3, 1) - short wide
-    5,   # (2, 2) - square (common)
-    3,   # (1, 3) - skinny tall
-    6,   # (2, 1) - small wide (very common)
-    6,   # (1, 2) - small tall (very common)
-    10,  # (1, 1) - tiny filler (most common)
-    2,   # (4, 1) - very wide but short
-    2,   # (1, 4) - very tall but skinny
-    1,   # (3, 3) - larger square (rare)
+    2,  
+    3,  
+    4,   
+    3,   
+    5,  
+    3, 
+    6,   
+    6,  
+    10, 
+    2,  
+    2,   
+    1,   
 ]
 
 def get_screen_resolution():
@@ -117,7 +117,7 @@ def create_freeflow_layout(images, screen_width, screen_height):
                             if grid[r][c]:
                                 neighbors += 1
                     
-                    score = neighbors - (row * 0.1) - (col * 0.05)  # Slight preference for top-left
+                    score = neighbors - (row * 0.1) - (col * 0.05)  
                     positions.append((score, row, col))
         
         if positions:
@@ -150,7 +150,7 @@ def create_freeflow_layout(images, screen_width, screen_height):
                     break
         
         if position is None:
-            continue  # Skip this attempt
+            continue 
             
         row, col = position
         img = shuffled_images[image_idx]
@@ -167,13 +167,13 @@ def create_freeflow_layout(images, screen_width, screen_height):
         if aspect_img > aspect_chunk:
             new_height = h
             new_width = int(h * aspect_img)
-            offset_x = x - (new_width - w) // 2  # Center crop
+            offset_x = x - (new_width - w) // 2 
             offset_y = y
         else:
             new_width = w
             new_height = int(w / aspect_img)
             offset_x = x
-            offset_y = y - (new_height - h) // 2  # Center crop
+            offset_y = y - (new_height - h) // 2 
 
         resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
         
