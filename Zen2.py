@@ -7,7 +7,6 @@ from pathlib import Path
 import subprocess
 import time
 
-# Grid configuration
 GRID_ROWS = 7
 GRID_COLS = 22
 OUTER_PADDING = 0  
@@ -51,11 +50,9 @@ def create_freeflow_layout(images, screen_width, screen_height):
     print(f"Creating free-flowing layout: {GRID_COLS}x{GRID_ROWS} grid")
     print("Analyzing image collection...")
     
-    # Shuffle images for variety
     shuffled_images = images.copy()
     random.shuffle(shuffled_images)
     
-    # Analyze the image collection
     portrait_count = sum(1 for img in shuffled_images if img.width / img.height < 0.8)
     landscape_count = sum(1 for img in shuffled_images if img.width / img.height > 1.3)
     square_count = len(shuffled_images) - portrait_count - landscape_count
@@ -89,20 +86,17 @@ def create_freeflow_layout(images, screen_width, screen_height):
         """Find the best position for a chunk, trying multiple strategies"""
         positions = []
         
-        # Strategy 1: Try all positions, prefer top-left
         for row in range(GRID_ROWS):
             for col in range(GRID_COLS):
                 if fits(chunk_w, chunk_h, row, col):
-                    # Score based on how much it fills gaps
                     score = 0
-                    # Prefer positions that are near existing chunks
                     neighbors = 0
                     for r in range(max(0, row-1), min(GRID_ROWS, row + chunk_h + 1)):
                         for c in range(max(0, col-1), min(GRID_COLS, col + chunk_w + 1)):
                             if grid[r][c]:
                                 neighbors += 1
                     
-                    score = neighbors - (row * 0.1) - (col * 0.05)  # Slight preference for top-left
+                    score = neighbors - (row * 0.1) - (col * 0.05)  
                     positions.append((score, row, col))
         
         if positions:
@@ -117,29 +111,27 @@ def create_freeflow_layout(images, screen_width, screen_height):
         
         if image_aspect < 0.8:
             tall_chunks = [(1, 2), (1, 3), (2, 3)]
-            tall_weights = [8, 6, 4]  # Prefer smaller tall chunks
+            tall_weights = [8, 6, 4]  
             chunk_w, chunk_h = random.choices(tall_chunks, weights=tall_weights, k=1)[0]
             print(f"  Portrait image (ratio {image_aspect:.2f}) -> {chunk_w}x{chunk_h} chunk")
             
         elif image_aspect > 1.3:
             wide_chunks = [(2, 1), (3, 1), (4, 2), (3, 2)]
-            wide_weights = [8, 6, 4, 6]  # Prefer medium wide chunks
+            wide_weights = [8, 6, 4, 6]  
             chunk_w, chunk_h = random.choices(wide_chunks, weights=wide_weights, k=1)[0]
             print(f"  Landscape image (ratio {image_aspect:.2f}) -> {chunk_w}x{chunk_h} chunk")
             
         else:
             square_chunks = [(1, 1), (2, 2), (2, 1), (1, 2)]
-            square_weights = [5, 8, 4, 4]  # Prefer 2x2 squares
+            square_weights = [5, 8, 4, 4] 
             chunk_w, chunk_h = random.choices(square_chunks, weights=square_weights, k=1)[0]
             print(f"  Square-ish image (ratio {image_aspect:.2f}) -> {chunk_w}x{chunk_h} chunk")
         
         if chunk_w == 1 and chunk_h == 1:
-            # Look for a good position for this 1x1
             found_isolated_spot = False
             for row in range(GRID_ROWS):
                 for col in range(GRID_COLS):
                     if fits(1, 1, row, col):
-                        # Check if placing 1x1 here would create a cluster
                         small_neighbors = 0
                         for r in range(max(0, row-1), min(GRID_ROWS, row + 2)):
                             for c in range(max(0, col-1), min(GRID_COLS, col + 2)):
@@ -206,13 +198,13 @@ def create_freeflow_layout(images, screen_width, screen_height):
         if aspect_img > aspect_chunk:
             new_height = h
             new_width = int(h * aspect_img)
-            offset_x = x - (new_width - w) // 2  # Center crop
+            offset_x = x - (new_width - w) // 2 
             offset_y = y
         else:
             new_width = w
             new_height = int(w / aspect_img)
             offset_x = x
-            offset_y = y - (new_height - h) // 2  # Center crop
+            offset_y = y - (new_height - h) // 2  
 
         resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
         
