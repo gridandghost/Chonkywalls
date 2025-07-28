@@ -13,33 +13,33 @@ OUTER_PADDING = 20
 INNER_PADDING = 6
 
 CHUNKS = [
-    (4, 2),  # medium wide
-    (3, 2),  # balanced wide
-    (2, 3),  # tall
-    (3, 1),  # short wide
-    (2, 2),  # square
-    (1, 3),  # skinny tall
-    (2, 1),  # small wide
-    (1, 2),  # small tall
-    (1, 1),  # tiny filler
-    (4, 1),  # very wide but short
-    (1, 4),  # very tall but skinny
-    (3, 3),  # larger square (rare)
+    (4, 2),  
+    (3, 2),  
+    (2, 3),  
+    (3, 1), 
+    (2, 2),  
+    (1, 3),  
+    (2, 1), 
+    (1, 2), 
+    (1, 1),  
+    (4, 1),  
+    (1, 4),  
+    (3, 3),  
 ]
 
 CHUNK_WEIGHTS = [
-    2,   # (4, 2) - medium wide
-    3,   # (3, 2) - balanced wide  
-    4,   # (2, 3) - tall
-    3,   # (3, 1) - short wide
-    5,   # (2, 2) - square (common)
-    3,   # (1, 3) - skinny tall
-    6,   # (2, 1) - small wide (very common)
-    6,   # (1, 2) - small tall (very common)
-    10,  # (1, 1) - tiny filler (most common)
-    2,   # (4, 1) - very wide but short
-    2,   # (1, 4) - very tall but skinny
-    1,   # (3, 3) - larger square (rare)
+    2,  
+    3,  
+    4,   
+    3,   
+    5,   
+    3,   
+    6,   
+    6,   
+    10,  
+    2,  
+    2,   
+    1,   
 ]
 
 def get_screen_resolution():
@@ -108,24 +108,24 @@ def create_freeflow_layout(images, screen_width, screen_height):
         """Find the best position for a chunk, trying multiple strategies"""
         positions = []
         
-        # Strategy 1: Try all positions, prefer top-left
+       
         for row in range(GRID_ROWS):
             for col in range(GRID_COLS):
                 if fits(chunk_w, chunk_h, row, col):
-                    # Score based on how much it fills gaps
+                   
                     score = 0
-                    # Prefer positions that are near existing chunks
+                  
                     neighbors = 0
                     for r in range(max(0, row-1), min(GRID_ROWS, row + chunk_h + 1)):
                         for c in range(max(0, col-1), min(GRID_COLS, col + chunk_w + 1)):
                             if grid[r][c]:
                                 neighbors += 1
                     
-                    score = neighbors - (row * 0.1) - (col * 0.05)  # Slight preference for top-left
+                    score = neighbors - (row * 0.1) - (col * 0.05)
                     positions.append((score, row, col))
         
         if positions:
-            # Sort by score and pick from top candidates with some randomness
+       
             positions.sort(reverse=True)
             top_positions = positions[:min(5, len(positions))]
             return random.choice(top_positions)[1:] if top_positions else None
@@ -135,7 +135,7 @@ def create_freeflow_layout(images, screen_width, screen_height):
         """Get a random chunk size based on weights"""
         return random.choices(CHUNKS, weights=CHUNK_WEIGHTS, k=1)[0]
 
-    # Main placement loop
+
     image_idx = 0
     placement_attempts = 0
     max_attempts = len(shuffled_images) * 3
@@ -171,16 +171,15 @@ def create_freeflow_layout(images, screen_width, screen_height):
         aspect_chunk = w / h
 
         if aspect_img > aspect_chunk:
-            # Image is wider - fit to height, crop width
             new_height = h
             new_width = int(h * aspect_img)
-            offset_x = x - (new_width - w) // 2  # Center crop
+            offset_x = x - (new_width - w) // 2  
             offset_y = y
         else:
             new_width = w
             new_height = int(w / aspect_img)
             offset_x = x
-            offset_y = y - (new_height - h) // 2  # Center crop
+            offset_y = y - (new_height - h) // 2  
 
         resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
         
