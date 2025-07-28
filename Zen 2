@@ -1,0 +1,278 @@
+#!/usr/bin/env python3
+
+import os
+import random
+from PIL import Image
+from pathlib import Path
+import subprocess
+import time
+
+# Grid configuration
+GRID_ROWS = 7
+GRID_COLS = 22
+OUTER_PADDING = 0  
+INNER_PADDING = 6  
+
+
+
+def get_screen_resolution():
+    try:
+        result = subprocess.run(['hyprctl', 'monitors'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0:
+            for line in result.stdout.split('\n'):
+                if '@' in line and 'x' in line and ('HDMI' in line or 'DP' in line or 'eDP' in line):
+                    parts = line.split()
+                    for part in parts:
+                        if 'x' in part and '@' in part:
+                            resolution_part = part.split('@')[0].strip()
+                            if 'x' in resolution_part:
+                                width, height = map(int, resolution_part.split('x'))
+                                return width, height
+    except Exception:
+        pass
+    return 5120, 1440
+
+def load_images(image_folder):
+    supported_formats = ('.png', '.jpg', '.jpeg', '.bmp', '.tiff', '.webp')
+    images = []
+    for file_path in Path(image_folder).glob('*'):
+        if file_path.suffix.lower() in supported_formats:
+            try:
+                img = Image.open(file_path)
+                images.append(img.convert('RGB'))
+            except Exception:
+                pass
+    return images
+
+def create_freeflow_layout(images, screen_width, screen_height):
+    if not images:
+        return None
+
+    print(f"Creating free-flowing layout: {GRID_COLS}x{GRID_ROWS} grid")
+    print("Analyzing image collection...")
+    
+    # Shuffle images for variety
+    shuffled_images = images.copy()
+    random.shuffle(shuffled_images)
+    
+    # Analyze the image collection
+    portrait_count = sum(1 for img in shuffled_images if img.width / img.height < 0.8)
+    landscape_count = sum(1 for img in shuffled_images if img.width / img.height > 1.3)
+    square_count = len(shuffled_images) - portrait_count - landscape_count
+    
+    print(f"Image types: {portrait_count} portrait, {square_count} square-ish, {landscape_count} landscape")
+    
+    cell_width = (screen_width - 2 * OUTER_PADDING - (GRID_COLS - 1) * INNER_PADDING) // GRID_COLS
+    cell_height = (screen_height - 2 * OUTER_PADDING - (GRID_ROWS - 1) * INNER_PADDING) // GRID_ROWS
+
+    print(f"Cell size: {cell_width}x{cell_height}")
+    print(f"Padding: {OUTER_PADDING}px outer, {INNER_PADDING}px inner")
+
+    canvas = Image.new('RGB', (screen_width, screen_height), (15, 15, 20))
+    grid = [[False for _ in range(GRID_COLS)] for _ in range(GRID_ROWS)]
+
+    def fits(chunk_w, chunk_h, row, col):
+        if row + chunk_h > GRID_ROWS or col + chunk_w > GRID_COLS:
+            return False
+        for r in range(row, row + chunk_h):
+            for c in range(col, col + chunk_w):
+                if grid[r][c]:
+                    return False
+        return True
+
+    def occupy(chunk_w, chunk_h, row, col):
+        for r in range(row, row + chunk_h):
+            for c in range(col, col + chunk_w):
+                grid[r][c] = True
+
+    def find_best_position(chunk_w, chunk_h):
+        """Find the best position for a chunk, trying multiple strategies"""
+        positions = []
+        
+        # Strategy 1: Try all positions, prefer top-left
+        for row in range(GRID_ROWS):
+            for col in range(GRID_COLS):
+                if fits(chunk_w, chunk_h, row, col):
+                    # Score based on how much it fills gaps
+                    score = 0
+                    # Prefer positions that are near existing chunks
+                    neighbors = 0
+                    for r in range(max(0, row-1), min(GRID_ROWS, row + chunk_h + 1)):
+                        for c in range(max(0, col-1), min(GRID_COLS, col + chunk_w + 1)):
+                            if grid[r][c]:
+                                neighbors += 1
+                    
+                    score = neighbors - (row * 0.1) - (col * 0.05)  # Slight preference for top-left
+                    positions.append((score, row, col))
+        
+        if positions:
+            positions.sort(reverse=True)
+            top_positions = positions[:min(5, len(positions))]
+            return random.choice(top_positions)[1:] if top_positions else None
+        return None
+
+    def get_smart_chunk(img):
+        """Get a chunk size that matches the image's aspect ratio"""
+        image_aspect = img.width / img.height
+        
+        if image_aspect < 0.8:
+            tall_chunks = [(1, 2), (1, 3), (2, 3)]
+            tall_weights = [8, 6, 4]  # Prefer smaller tall chunks
+            chunk_w, chunk_h = random.choices(tall_chunks, weights=tall_weights, k=1)[0]
+            print(f"  Portrait image (ratio {image_aspect:.2f}) -> {chunk_w}x{chunk_h} chunk")
+            
+        elif image_aspect > 1.3:
+            wide_chunks = [(2, 1), (3, 1), (4, 2), (3, 2)]
+            wide_weights = [8, 6, 4, 6]  # Prefer medium wide chunks
+            chunk_w, chunk_h = random.choices(wide_chunks, weights=wide_weights, k=1)[0]
+            print(f"  Landscape image (ratio {image_aspect:.2f}) -> {chunk_w}x{chunk_h} chunk")
+            
+        else:
+            square_chunks = [(1, 1), (2, 2), (2, 1), (1, 2)]
+            square_weights = [5, 8, 4, 4]  # Prefer 2x2 squares
+            chunk_w, chunk_h = random.choices(square_chunks, weights=square_weights, k=1)[0]
+            print(f"  Square-ish image (ratio {image_aspect:.2f}) -> {chunk_w}x{chunk_h} chunk")
+        
+        if chunk_w == 1 and chunk_h == 1:
+            # Look for a good position for this 1x1
+            found_isolated_spot = False
+            for row in range(GRID_ROWS):
+                for col in range(GRID_COLS):
+                    if fits(1, 1, row, col):
+                        # Check if placing 1x1 here would create a cluster
+                        small_neighbors = 0
+                        for r in range(max(0, row-1), min(GRID_ROWS, row + 2)):
+                            for c in range(max(0, col-1), min(GRID_COLS, col + 2)):
+                                if r != row or c != col:
+                                    if 0 <= r < GRID_ROWS and 0 <= c < GRID_COLS and grid[r][c]:
+                                        small_neighbors += 1
+                        
+                        if small_neighbors <= 2:
+                            found_isolated_spot = True
+                            break
+                if found_isolated_spot:
+                    break
+            
+            if not found_isolated_spot:
+                chunk_w, chunk_h = 2, 2
+                print(f"  Avoided 1x1 cluster, using 2x2 instead (better for square image)")
+        
+        return chunk_w, chunk_h
+
+    image_idx = 0
+    placement_attempts = 0
+    max_attempts = len(shuffled_images) * 3
+
+    while image_idx < len(shuffled_images) and placement_attempts < max_attempts:
+        placement_attempts += 1
+        
+        img = shuffled_images[image_idx]
+        
+        chunk_w, chunk_h = get_smart_chunk(img)
+        
+        position = find_best_position(chunk_w, chunk_h)
+        
+        if position is None:
+            image_aspect = img.width / img.height
+            
+            if image_aspect < 0.8:
+                fallback_chunks = [(1, 2), (1, 1), (2, 1)]
+            elif image_aspect > 1.3:
+                fallback_chunks = [(2, 1), (1, 1), (1, 2)]
+            else:
+                fallback_chunks = [(2, 2), (1, 1), (2, 1), (1, 2)]
+            
+            for fallback_w, fallback_h in fallback_chunks:
+                position = find_best_position(fallback_w, fallback_h)
+                if position:
+                    chunk_w, chunk_h = fallback_w, fallback_h
+                    print(f"  Using fallback chunk {chunk_w}x{chunk_h} for aspect {image_aspect:.2f}")
+                    break
+        
+        if position is None:
+            continue  
+            
+        row, col = position
+        image_idx += 1
+
+        x = OUTER_PADDING + col * (cell_width + INNER_PADDING)
+        y = OUTER_PADDING + row * (cell_height + INNER_PADDING)
+        w = chunk_w * cell_width + (chunk_w - 1) * INNER_PADDING
+        h = chunk_h * cell_height + (chunk_h - 1) * INNER_PADDING
+
+        aspect_img = img.width / img.height
+        aspect_chunk = w / h
+
+        if aspect_img > aspect_chunk:
+            new_height = h
+            new_width = int(h * aspect_img)
+            offset_x = x - (new_width - w) // 2  # Center crop
+            offset_y = y
+        else:
+            new_width = w
+            new_height = int(w / aspect_img)
+            offset_x = x
+            offset_y = y - (new_height - h) // 2  # Center crop
+
+        resized = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        
+        if new_width > w or new_height > h:
+            crop_x = max(0, (new_width - w) // 2)
+            crop_y = max(0, (new_height - h) // 2)
+            resized = resized.crop((crop_x, crop_y, crop_x + w, crop_y + h))
+            offset_x = x
+            offset_y = y
+
+        canvas.paste(resized, (offset_x, offset_y))
+        occupy(chunk_w, chunk_h, row, col)
+        
+        if image_idx % 20 == 0:
+            filled_cells = sum(sum(row) for row in grid)
+            total_cells = GRID_ROWS * GRID_COLS
+            
+            placed_images = shuffled_images[:image_idx]
+            placed_portrait = sum(1 for img in placed_images if img.width / img.height < 0.8)
+            placed_landscape = sum(1 for img in placed_images if img.width / img.height > 1.3)
+            placed_square = image_idx - placed_portrait - placed_landscape
+            
+            print(f"Placed {image_idx} images: {placed_portrait}P/{placed_square}S/{placed_landscape}L, grid {filled_cells/total_cells*100:.1f}% filled")
+
+    filled_cells = sum(sum(row) for row in grid)
+    total_cells = GRID_ROWS * GRID_COLS
+    
+    placed_images = shuffled_images[:image_idx]
+    final_portrait = sum(1 for img in placed_images if img.width / img.height < 0.8)
+    final_landscape = sum(1 for img in placed_images if img.width / img.height > 1.3)
+    final_square = image_idx - final_portrait - final_landscape
+    
+    print(f"Layout complete: {image_idx} images placed ({filled_cells/total_cells*100:.1f}% filled)")
+    print(f"Placed: {final_portrait} portrait, {final_square} square-ish, {final_landscape} landscape")
+    print(f"Aspect ratio matching: Portrait->tall chunks, Square->square chunks, Landscape->wide chunks")
+    
+    return canvas
+
+def main():
+    image_folder = "/home/Pictures/"
+    output_filename = "/home/Pictures/wallpaper.png"
+    screen_width, screen_height = get_screen_resolution()
+    images = load_images(image_folder)
+    if not images:
+        print("No images found.")
+        return
+
+    print(f"Loaded {len(images)} images")
+    wallpaper = create_freeflow_layout(images, screen_width, screen_height)
+
+    if wallpaper:
+        try:
+            wallpaper.save(output_filename, quality=95)
+            print(f"✓ Wallpaper saved as: {output_filename}")
+            subprocess.run(["swww", "img", output_filename], check=True)
+            print(f"✓ Wallpaper applied via: swww img {output_filename}")
+        except Exception as e:
+            print(f"⚠️ Error saving or setting wallpaper: {e}")
+    else:
+        print("Failed to create wallpaper")
+
+if __name__ == "__main__":
+    main()
